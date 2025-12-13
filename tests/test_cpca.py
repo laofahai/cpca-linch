@@ -43,14 +43,13 @@ def test_transform():
 
 
 def test_data_from_csv():
-    area_map, city_map, province_area_map, province_map, latlng = cpca._data_from_csv()
+    area_map, city_map, province_area_map, province_map = cpca._data_from_csv()
     print("....")
     assert province_map['北京'] == '北京市'
     assert city_map.get_full_name('北京') == '北京市'
 
     beijin_pca = {('北京市', '北京市', ''), ('北京市', '北京市', '东城区'), ('北京市', '北京市', '西城区'), ('北京市', '北京市', '朝阳区'), ('北京市', '北京市', '丰台区'), ('北京市', '北京市', '石景山区'), ('北京市', '北京市', '海淀区'), ('北京市', '北京市', '门头沟区'), ('北京市', '北京市', '房山区'), ('北京市', '北京市', '通州区'), ('北京市', '北京市', '顺义区'), ('北京市', '北京市', '昌平区'), ('北京市', '北京市', '大兴区'), ('北京市', '北京市', '怀柔区'), ('北京市', '北京市', '平谷区'), ('北京市', '北京市', '密云区'), ('北京市', '北京市', '延庆区')}
     assert set(city_map.get_relational_addrs('北京')) == beijin_pca
-    assert latlng[('北京市', '北京市', '东城区')] == ('39.93857401298612', '116.42188470126446')
     assert province_area_map.get_relational_addrs(('北京市', '东城区')) == [('北京市', '北京市', '东城区')]
     assert area_map.get_full_name('东城区') == '东城区'
     assert area_map.get_relational_addrs('东城区') == [('北京市', '北京市', '东城区')]

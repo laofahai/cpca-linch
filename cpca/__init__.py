@@ -10,7 +10,7 @@ VERSION = (0, 4, 4)
 __version__ = ".".join([str(x) for x in VERSION])
 
 
-def _data_from_csv() -> (AddrMap, AddrMap, AddrMap, dict, dict):
+def _data_from_csv() -> (AddrMap, AddrMap, AddrMap, dict):
     # 区名及其简写 -> 相关pca元组
     area_map = AddrMap()
     # 城市名及其简写 -> 相关pca元组
@@ -19,8 +19,6 @@ def _data_from_csv() -> (AddrMap, AddrMap, AddrMap, dict, dict):
     province_area_map = AddrMap()
     # 省名 -> 省全名
     province_map = {}
-    # (省名, 市名, 区名) -> (纬度,经度)
-    latlng = {}
     # 数据约定:国家直辖市的sheng字段为直辖市名称, 省直辖县的city字段为空
     from pkg_resources import resource_stream
 
@@ -30,18 +28,12 @@ def _data_from_csv() -> (AddrMap, AddrMap, AddrMap, dict, dict):
         text = TextIOWrapper(pca_stream, encoding='utf8')
         pca_csv = csv.DictReader(text)
         for record_dict in pca_csv:
-            # 经纬度为可选字段
-            lat = record_dict.get('lat', '')
-            lng = record_dict.get('lng', '')
-            if lat and lng:
-                latlng[(record_dict['sheng'], record_dict['shi'], record_dict['qu'])] = (lat, lng)
-
             _fill_province_map(province_map, record_dict)
             _fill_area_map(area_map, record_dict)
             _fill_city_map(city_map, record_dict)
             _fill_province_area_map(province_area_map, record_dict)
 
-    return area_map, city_map, province_area_map, province_map, latlng
+    return area_map, city_map, province_area_map, province_map
 
 
 def _fill_province_area_map(province_area_map: AddrMap, record_dict):
@@ -108,7 +100,7 @@ def _fill_province_map(province_map, record_dict):
             province_map['澳门'] = sheng
 
 
-area_map, city_map, province_area_map, province_map, latlng = _data_from_csv()
+area_map, city_map, province_area_map, province_map = _data_from_csv()
 
 # 直辖市
 munis = {'北京市', '天津市', '上海市', '重庆市'}
