@@ -3,7 +3,7 @@
 import cpca
 from cpca.structures import Pca
 import pandas as pd
-from mock import MagicMock
+from unittest.mock import MagicMock
 from cpca.structures import P,C,A
 
 
