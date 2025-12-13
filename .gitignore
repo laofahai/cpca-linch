@@ -5,6 +5,8 @@ build
 *.egg-info
 .pytest_cache
 .vscode
+.venv
+.eggs
 processed.csv
 processed.html
 echarts.html

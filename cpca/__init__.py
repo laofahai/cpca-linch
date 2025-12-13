@@ -30,8 +30,11 @@ def _data_from_csv() -> (AddrMap, AddrMap, AddrMap, dict, dict):
         text = TextIOWrapper(pca_stream, encoding='utf8')
         pca_csv = csv.DictReader(text)
         for record_dict in pca_csv:
-            latlng[(record_dict['sheng'], record_dict['shi'], record_dict['qu'])] = \
-                (record_dict['lat'], record_dict['lng'])
+            # 经纬度为可选字段
+            lat = record_dict.get('lat', '')
+            lng = record_dict.get('lng', '')
+            if lat and lng:
+                latlng[(record_dict['sheng'], record_dict['shi'], record_dict['qu'])] = (lat, lng)
 
             _fill_province_map(province_map, record_dict)
             _fill_area_map(area_map, record_dict)
@@ -52,8 +55,17 @@ def _fill_area_map(area_map: AddrMap, record_dict):
     area_name = record_dict['qu']
     pca_tuple = (record_dict['sheng'], record_dict['shi'], record_dict['qu'])
     area_map.append_relational_addr(area_name, pca_tuple, A)
+    # 处理区名简写
     if area_name.endswith('市'):
         area_map.append_relational_addr(area_name[:-1], pca_tuple, A)
+    elif area_name.endswith('区'):
+        area_map.append_relational_addr(area_name[:-1], pca_tuple, A)
+    elif area_name.endswith('县'):
+        area_map.append_relational_addr(area_name[:-1], pca_tuple, A)
+    elif area_name.endswith('镇'):
+        area_map.append_relational_addr(area_name[:-1], pca_tuple, A)
+    elif area_name.endswith('街道'):
+        area_map.append_relational_addr(area_name[:-2], pca_tuple, A)
 
 
 def _fill_city_map(city_map: AddrMap, record_dict):
