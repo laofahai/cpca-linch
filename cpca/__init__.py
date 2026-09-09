@@ -4,10 +4,27 @@
 
 from .structures import AddrMap, Pca
 from .structures import P,C,A
+from functools import lru_cache
 
-VERSION = (0, 4, 5)
+VERSION = (0, 5, 0)
 
 __version__ = ".".join([str(x) for x in VERSION])
+
+
+def _data_rows():
+    """现行数据优先，兼容历史地址；相同记录只加载一次。"""
+    import csv
+    from io import TextIOWrapper
+    from pkg_resources import resource_stream
+
+    seen = set()
+    for filename in ('pca.csv', 'pca_legacy.csv'):
+        with resource_stream('cpca.resources', filename) as stream:
+            for row in csv.DictReader(TextIOWrapper(stream, encoding='utf8')):
+                key = (row['sheng'], row['shi'], row['qu'])
+                if key not in seen:
+                    seen.add(key)
+                    yield row
 
 
 def _data_from_csv() -> (AddrMap, AddrMap, AddrMap, dict):
@@ -20,18 +37,11 @@ def _data_from_csv() -> (AddrMap, AddrMap, AddrMap, dict):
     # 省名 -> 省全名
     province_map = {}
     # 数据约定:国家直辖市的sheng字段为直辖市名称, 省直辖县的city字段为空
-    from pkg_resources import resource_stream
-
-    with resource_stream('cpca.resources', 'pca.csv') as pca_stream:
-        from io import TextIOWrapper
-        import csv
-        text = TextIOWrapper(pca_stream, encoding='utf8')
-        pca_csv = csv.DictReader(text)
-        for record_dict in pca_csv:
-            _fill_province_map(province_map, record_dict)
-            _fill_area_map(area_map, record_dict)
-            _fill_city_map(city_map, record_dict)
-            _fill_province_area_map(province_area_map, record_dict)
+    for record_dict in _data_rows():
+        _fill_province_map(province_map, record_dict)
+        _fill_area_map(area_map, record_dict)
+        _fill_city_map(city_map, record_dict)
+        _fill_province_area_map(province_area_map, record_dict)
 
     return area_map, city_map, province_area_map, province_map
 
@@ -124,7 +134,7 @@ myumap = {
 }
 
 
-def transform(location_strs, umap=myumap, index=[], cut=True, lookahead=8, pos_sensitive=False, open_warning=True):
+def transform(location_strs, umap=myumap, index=[], cut=True, lookahead=8, pos_sensitive=False, open_warning=True, include_status=True):
     """将地址描述字符串转换以"省","市","区"信息为列的DataFrame表格
         Args:
             locations:地址描述字符集合,可以是list, Series等任意可以进行for in循环的集合
@@ -137,6 +147,7 @@ def transform(location_strs, umap=myumap, index=[], cut=True, lookahead=8, pos_s
                       如果你的样本中都是短地名的话，可以考虑把这个数字调小一点以提高性能
             pos_sensitive:如果为True则会多返回三列，分别提取出的省市区在字符串中的位置，如果字符串中不存在的话则显示-1
             open_warning: 是否打开umap警告, 默认打开
+            include_status: 默认追加识别状态、说明、现行名称建议；False保持原有列结构
         Returns:
             一个Pandas的DataFrame类型的表格，如下：
                |省    |市   |区    |地址                 |
@@ -155,11 +166,31 @@ def transform(location_strs, umap=myumap, index=[], cut=True, lookahead=8, pos_s
 
     result = pd.DataFrame([_handle_one_record(addr, umap, cut, lookahead, pos_sensitive, open_warning) for addr in location_strs], index=index) \
              if index else pd.DataFrame([_handle_one_record(addr, umap, cut, lookahead, pos_sensitive, open_warning) for addr in location_strs])
-    # 这句的唯一作用是让列的顺序好看一些
+    columns = ['省', '市', '区', '地址']
     if pos_sensitive:
-        return result.loc[:, ('省', '市', '区', '地址', '省_pos', '市_pos', '区_pos')]
-    else:
-        return result.loc[:, ('省', '市', '区', '地址')]
+        columns += ['省_pos', '市_pos', '区_pos']
+    result = result.reindex(columns=columns)
+    if include_status:
+        statuses = [_division_status(row) for row in result.to_dict('records')]
+        for i, column in enumerate(('识别状态', '说明', '现行名称建议')):
+            result[column] = [status[i] for status in statuses]
+    return result
+
+
+@lru_cache(maxsize=1)
+def _division_status_map():
+    return {(row['sheng'], row['shi'], row['qu']):
+            (row.get('status') or '现行名称', row.get('note', ''), row.get('current_name', ''))
+            for row in _data_rows()}
+
+
+def _division_status(row):
+    """按完整省市区归属判断，不能仅凭同名区县宣称匹配正确。"""
+    key = tuple(row.get(field, '') for field in ('省', '市', '区'))
+    if not all(isinstance(value, str) and value for value in key):
+        return ('未完整识别', '未取得完整省市区归属；不能据此判断名称是否现行。', '')
+    return _division_status_map().get(
+        key, ('待核验', '识别出的省市区组合不在数据表中，请核对地址或自定义映射。', ''))
 
 
 def _handle_one_record(addr, umap, cut, lookahead, pos_sensitive, open_warning):
@@ -229,9 +260,20 @@ def _extract_addr(addr, cut, lookahead):
     return _jieba_extract(addr) if cut else _full_text_extract(addr, lookahead)
 
 
-def _jieba_extract(addr):
-    """基于结巴分词进行提取"""
+@lru_cache(maxsize=1)
+def _address_tokenizer():
+    """独立词典避免修改调用方的全局 jieba 分词行为。"""
     import jieba
+    tokenizer = jieba.Tokenizer()
+    names = {row[field] for row in _data_rows()
+             for field in ('sheng', 'shi', 'qu') if row[field]}
+    for name in sorted(names):
+        tokenizer.add_word(name, freq=100000)
+    return tokenizer
+
+
+def _jieba_extract(addr):
+    """基于包含区划全名的结巴词典进行提取"""
 
     result = Pca()
 
@@ -249,7 +291,7 @@ def _jieba_extract(addr):
             if pos == truncate:
                 truncate += len(name)
 
-    for word in jieba.cut(addr):
+    for word in _address_tokenizer().cut(addr):
         # 优先提取低级别行政区 (主要是为直辖市和特别行政区考虑)
         if word in area_map:
             _set_pca('area', word, area_map.get_full_name(word))

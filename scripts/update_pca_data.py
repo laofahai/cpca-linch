@@ -8,8 +8,8 @@
 
 使用方法:
 1. 下载 ok_data_level3-4.csv.7z 并解压
-2. 将 ok_data_level3.csv 和 ok_data_level4.csv 放到本脚本同目录
-3. 运行: python3 convert_data.py
+2. 将 ok_data_level3.csv 和 ok_data_level4.csv 放到当前工作目录
+3. 运行: python3 /path/to/scripts/update_pca_data.py
 4. 生成的 pca_new.csv 替换 cpca/resources/pca.csv
 """
 
@@ -21,7 +21,20 @@ import urllib.request
 import tempfile
 
 
-DATA_URL = "https://github.com/xiangyuecn/AreaCity-JsSpider-StatsGov/releases/download/2023.240319.250114/ok_data_level3-4.csv.7z"
+DATA_VERSION = "2025.251231.260403"
+DATA_URL = f"https://github.com/xiangyuecn/AreaCity-JsSpider-StatsGov/releases/download/{DATA_VERSION}/ok_data_level3-4.csv.7z"
+
+# 上游地图数据尚未完整收录的新设县。公告及核验日期见 docs/data-update-2026.md。
+# 使用集合合并，后续上游收录相同记录时不会重复添加。
+OFFICIAL_SUPPLEMENTS = {
+    ('新疆维吾尔自治区', '和田地区', '和安县'),
+    ('新疆维吾尔自治区', '和田地区', '和康县'),
+    ('新疆维吾尔自治区', '喀什地区', '岑岭县'),
+}
+
+# 与嘉峪关市政府公布的两街道三镇不一致，转入兼容表并标记待核验。
+# 依据：https://www.jyg.gov.cn/zjjyg/
+UNVERIFIED_DIVISIONS = {('甘肃省', '嘉峪关市', '第一街道')}
 
 # 不设区的地级市（直筒子市），需要把镇街作为区级处理
 # https://zh.wikipedia.org/wiki/不设区的市_(地级市)
@@ -34,7 +47,7 @@ DIRECT_CITIES = {
 
 
 def download_and_extract():
-    """下载并解压最新数据"""
+    """下载并解压固定版本的数据；升级时须人工审核版本与差异。"""
     print("下载数据...")
     temp_dir = tempfile.mkdtemp()
     zip_path = os.path.join(temp_dir, "data.7z")
@@ -151,6 +164,12 @@ def convert_to_pca(level3_data, level4_data, output_path):
         if shi in DIRECT_CITIES and DIRECT_CITIES[shi] == sheng:
             results.append({'country': '中国', 'sheng': sheng, 'shi': shi, 'qu': zhen})
 
+    for sheng, shi, qu in OFFICIAL_SUPPLEMENTS:
+        results.append({'country': '中国', 'sheng': sheng, 'shi': shi, 'qu': qu})
+
+    # 直辖市层级归一化和官方补丁可能产生相同行，先去重再排序。
+    results = list({(r['sheng'], r['shi'], r['qu']): r for r in results
+                    if (r['sheng'], r['shi'], r['qu']) not in UNVERIFIED_DIVISIONS}.values())
     # 按省市区排序
     results.sort(key=lambda x: (x['sheng'], x['shi'], x['qu']))
 
@@ -176,7 +195,7 @@ def main():
             print("\n请手动下载数据:")
             print(f"  1. 访问 {DATA_URL}")
             print("  2. 解压得到 ok_data_level3.csv 和 ok_data_level4.csv")
-            print("  3. 将文件放到本脚本同目录")
+            print("  3. 将文件放到当前工作目录")
             print("  4. 重新运行本脚本")
             sys.exit(1)
 

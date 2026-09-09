@@ -21,10 +21,15 @@ jobs:
       - name: Install build dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install build
+          pip install build twine
 
       - name: Build package
         run: python -m build
+
+      - name: Validate distributions and release version
+        run: |
+          python -m twine check dist/*
+          python -c "import os, pathlib; version = os.environ['GITHUB_REF_NAME'].removeprefix('v'); assert list(pathlib.Path('dist').glob('cpca_linch-' + version + '-*.whl')), 'Release tag does not match package version'"
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1

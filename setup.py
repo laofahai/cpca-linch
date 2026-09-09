@@ -1,31 +1,14 @@
 # -*- coding: utf-8 -*-
 from setuptools import setup
-from setuptools.command.test import test as TestCommand
+from pathlib import Path
+import ast
 import os
-import sys
-import cpca
 
-
-class PyTest(TestCommand):
-
-    def initialize_options(self):
-        TestCommand.initialize_options(self)
-        self.pytest_args = []
-        # try:
-        #     from multiprocessing import cpu_count
-        #     self.pytest_args = ['-n', str(cpu_count()), '--boxed']
-        # except (ImportError, NotImplementedError):
-        #     self.pytest_args = ['-n', '1', '--boxed']
-
-    def finalize_options(self):
-        TestCommand.finalize_options(self)
-        self.test_args = []
-        self.test_suite = True
-
-    def run_tests(self):
-        import pytest
-        errno = pytest.main(self.pytest_args)
-        sys.exit(errno)
+# Read the literal version without importing runtime code during isolated builds.
+module = ast.parse(Path(__file__).with_name("cpca").joinpath("__init__.py").read_text(encoding="utf-8"))
+version = next(ast.literal_eval(node.value) for node in module.body
+               if isinstance(node, ast.Assign)
+               and any(isinstance(t, ast.Name) and t.id == "VERSION" for t in node.targets))
 
 
 def read_rst(f):
@@ -37,12 +20,14 @@ README = os.path.join(os.path.dirname(__file__), 'README.rst')
 requires = [
            'pandas',
            'jieba',
+           'setuptools<82',  # jieba 0.42.1 imports pkg_resources
            ]  
 
 
 setup(name='cpca-linch',
-      version=cpca.__version__,
-      description='Chinese Province, City and Area Recognition Utilities (Updated 2025)',
+      version=".".join(map(str, version)),
+      python_requires=">=3.8",
+      description='Chinese Province, City and Area Recognition Utilities (2026 data snapshot)',
       long_description=read_rst(README),
       author='laofahai',
       author_email='',
@@ -63,8 +48,6 @@ setup(name='cpca-linch',
       ],
       keywords='Simplified Chinese,Chinese geographic information,Chinese province city area recognition',
       packages=['cpca', 'cpca.resources'],
-      # 通过python setup.py test可以执行所有的单元测试
-      cmdclass={'test': PyTest},
       package_dir={'cpca': 'cpca', 'cpca.resources': 'cpca/resources'},
       package_data={'': ['*.csv']},
       include_package_data=True,
