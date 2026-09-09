@@ -38,6 +38,16 @@ Key Improvements
 5. Loaded division names into a private jieba tokenizer to recognize newly established divisions
 6. Added recognition status, explanations and current-name suggestions by default. Use ``include_status=False`` to preserve the original output columns. Historical names are retained rather than silently rewritten; farm/park names are labelled as places.
 
+7. Added 10 reviewed address aliases and historical guidance for Dachang and Meilie districts in 0.5.1; ambiguous default mappings disclose candidate cities.
+8. Fixed province-constrained city/district aliases, separated reverse-order addresses, Luqiao district road filtering, and province-abbreviation positions in 0.5.2.
+
+Output validation
+-----------------
+
+By default, output combinations are checked against the bundled current and historical tables, loaded locally without a network request per address. Alias disambiguation also uses parent relationships. Conflicting explicit names are retained and marked ``待核验``; historical names keep their original spelling and status. A match only confirms membership in this snapshot, not the real-world validity of the input address.
+
+``include_status=False`` disables output status checking and its columns; parsing still applies parent constraints. Both parsing modes share these rules. Neither mode guarantees higher accuracy for every input.
+
 Full documentation: `https://github.com/laofahai/cpca-linch <https://github.com/laofahai/cpca-linch>`_
 
 License

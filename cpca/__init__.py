@@ -6,7 +6,7 @@ from .structures import AddrMap, Pca
 from .structures import P,C,A
 from functools import lru_cache
 
-VERSION = (0, 5, 1)
+VERSION = (0, 5, 2)
 
 __version__ = ".".join([str(x) for x in VERSION])
 
@@ -326,32 +326,55 @@ def _address_match(word, addr, pos, result):
     if not word:
         return None
     tail = addr[pos + len(word):]
+    road_suffix = r'^(?:[东西南北中]?(?:路|街|巷|大道|大街|胡同)|风情街)'
     is_full = (word in province_map and province_map[word] == word
                or word in city_map and city_map.get_full_name(word) == word
                or word in area_map and area_map.get_full_name(word) == word)
+    # 合法下级全名（如台州路桥区）优先于道路后缀。
+    has_child = any(
+        tail.startswith(r[A]) and r[A]
+        for r in (city_map.get_relational_addrs(word) if word in city_map else [])
+        if not result.province or r[P] == result.province)
     # 山西北路、台湾风情街是道路名，而不是新的行政片段。
-    if not is_full and re.match(r'^(?:[东西南北中]?(?:路|街|巷|大道|大街|胡同)|风情街)', tail):
+    if not is_full and not has_child and re.match(road_suffix, tail):
         return None
 
     # 吉林/海南首先作为省简称，避免被同名城市、区抢先占用。
     area_province = (result.area and word in province_map
                      and any(r[P] == province_map[word]
                              for r in area_map.get_relational_addrs(result.area)))
+    city_province = (result.city and word in province_map
+                     and any(r[P] == province_map[word]
+                             for r in city_map.get_relational_addrs(result.city)))
     if (word in province_map and not result.province
-            and (is_full or area_province or not (result.city or result.area))):
+            and (is_full or area_province or city_province or not (result.city or result.area))):
         full = province_map[word]
         return ('city', full) if is_munis(full) else ('province', full)
     # 朝阳北京等区在市前的写法：后续明确父级可以消解当前简称的层级歧义。
     next_parent = False
+    parent_tail = tail.lstrip(' \t\r\n-，,、/')
     if word in city_map and word in area_map:
-        parents = area_map.get_relational_addrs(word)
-        for n in range(2, min(len(tail), 12) + 1):
-            following = tail[:n]
+        parents = [r for r in area_map.get_relational_addrs(word)
+                   if not result.province or r[P] == result.province]
+        for n in range(2, min(len(parent_tail), 12) + 1):
+            following = parent_tail[:n]
+            following_full = (following in province_map and province_map[following] == following
+                              or following in city_map and city_map.get_full_name(following) == following)
+            if not following_full and re.match(road_suffix, parent_tail[n:]):
+                continue
             if (following in city_map and any(r[C] == city_map.get_full_name(following) for r in parents)
                     or following in province_map and any(r[P] == province_map[following] for r in parents)):
                 next_parent = True
                 break
-    if (word in city_map and not result.city and not next_parent
+    # 同名简称按已识别上级筛选；明确的冲突全名仍交由输出校验提示。
+    area_in_province = (result.province and word in area_map
+                        and any(r[P] == result.province
+                                for r in area_map.get_relational_addrs(word)))
+    city_in_province = (not result.province or word in city_map
+                        and any(r[P] == result.province
+                                for r in city_map.get_relational_addrs(word)))
+    prefer_area = area_in_province and not city_in_province and not is_full
+    if (word in city_map and not result.city and not next_parent and not prefer_area
             and (word not in area_map or area_map.get_full_name(word) != word)):
         field, full = 'city', city_map.get_full_name(word)
     elif word in area_map and not result.area:
@@ -370,7 +393,7 @@ def _address_match(word, addr, pos, result):
         # 无上级上下文的县区简称需独立出现或紧接一个行政名称。
         # 城市简称仍允许作为地址起点（如深圳南山）。
         if field == 'area' and tail.strip():
-            has_next_division = any(
+            has_next_division = next_parent or any(
                 tail[:n] in area_map or tail[:n] in city_map or tail[:n] in province_map
                 for n in range(2, min(len(tail), 12) + 1))
             has_street = re.match(r'^[\u4e00-\u9fff]{1,8}(?:路|街|巷|大道|小区|园|开发区|村)', tail)

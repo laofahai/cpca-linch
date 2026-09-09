@@ -129,3 +129,33 @@ def test_alias_targets_exist_in_current_data():
     current = {(r['sheng'], r['shi'], r['qu']) for r in cpca._data_rows()}
     for row in cpca._alias_rows():
         assert (row['sheng'], row['shi'], row['qu']) in current
+
+
+@pytest.mark.parametrize('cut', [True, False])
+@pytest.mark.parametrize('text,expected,detail,positions', [
+    ('黑龙江省西安人民路1号', ('黑龙江省', '牡丹江市', '西安区'), '人民路1号', (0, -1, 4)),
+    ('江苏省新北人民路1号', ('江苏省', '常州市', '新北区'), '人民路1号', (0, -1, 3)),
+    ('湖南省资阳人民路1号', ('湖南省', '益阳市', '资阳区'), '人民路1号', (0, -1, 3)),
+    ('朝阳 北京市望京1号', ('北京市', '北京市', '朝阳区'), ' 北京市望京1号', (3, 3, 0)),
+    ('朝阳-北京市望京1号', ('北京市', '北京市', '朝阳区'), '-北京市望京1号', (3, 3, 0)),
+    ('台州路桥区人民路1号', ('浙江省', '台州市', '路桥区'), '人民路1号', (-1, 0, 2)),
+    ('西安市陕西雁塔区人民路1号', ('陕西省', '西安市', '雁塔区'), '人民路1号', (3, 0, 5)),
+])
+def test_review_hierarchy_regressions(text, expected, detail, positions, cut):
+    row = cpca.transform([text], cut=cut, pos_sensitive=True).iloc[0]
+    assert tuple(row[k] for k in ('省', '市', '区')) == expected
+    assert row['地址'] == detail
+    assert tuple(row[k] for k in ('省_pos', '市_pos', '区_pos')) == positions
+    assert row['识别状态'] == '现行名称'
+
+
+@pytest.mark.parametrize('cut', [True, False])
+@pytest.mark.parametrize('text,detail', [
+    ('辽宁省朝阳 北京路1号', ' 北京路1号'),
+    ('朝阳 北京路1号', ' 北京路1号'),
+])
+def test_reverse_parent_lookahead_does_not_use_road_name(text, detail, cut):
+    row = cpca.transform([text], cut=cut).iloc[0]
+    assert (row['省'], row['市'], row['区']) == ('辽宁省', '朝阳市', '')
+    assert row['地址'] == detail
+    assert row['识别状态'] == '未完整识别'
