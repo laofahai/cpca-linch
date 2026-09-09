@@ -1,56 +1,119 @@
 cpca-linch
 ==========
 
-A Python module for extracting Chinese province, city, and district information from address strings.
+从简体中文地址中提取省、市、区，返回 pandas DataFrame；支持部分地址简称、历史名称识别和归属校验。
 
-Fork from `DQinYuan/chinese_province_city_area_mapper <https://github.com/DQinYuan/chinese_province_city_area_mapper>`_ with a 2026-04-03 data snapshot and official supplements reviewed on 2026-09-08.
+安装包名为 ``cpca-linch``，导入名为 ``cpca``，支持 Python 3.8 及以上版本。
+本项目 fork 自 `DQinYuan/chinese_province_city_area_mapper <https://github.com/DQinYuan/chinese_province_city_area_mapper>`_。
 
-Installation
-------------
+安装与快速开始
+--------------
 
 .. code-block:: bash
 
-    pip install cpca-linch
-
-Usage
------
+    pip install -U cpca-linch
 
 .. code-block:: python
 
     import cpca
 
-    df = cpca.transform(["徐汇区虹漕路461号58号楼5楼", "广东省中山市沙溪镇云汉轻纺城"], include_status=False)
-    print(df)
+    addresses = [
+        "广东省中山市南朗街道人民路1号",
+        "广东省中山市南朗镇人民路1号",
+        "黑龙江省西安人民路1号",
+    ]
+    df = cpca.transform(addresses)
+    print(df[["省", "市", "区", "地址", "识别状态", "现行名称建议"]])
 
-Output::
+三条地址分别识别为中山市南朗街道、中山市南朗镇、牡丹江市西安区。
+南朗镇保留原名并标记“历史名称”，现行名称建议为“南朗街道”；另外两条为“现行名称”。
 
-         省    市    区              地址
-    0  上海市  上海市  徐汇区  虹漕路461号58号楼5楼
-    1  广东省  中山市  沙溪镇       云汉轻纺城
+输出与校验
+----------
 
-Key Improvements
-----------------
+默认返回七列：``省``、``市``、``区``、``地址``、``识别状态``、``说明``、``现行名称建议``。
+解析时按表中的上级归属消歧，输出前对照包内现行表和历史兼容表核验省市区组合，无须逐条联网。
 
-1. Updated administrative division data to upstream version 2025.251231.260403 (collected 2026-04-03), with official supplements for He'an, Hekang and Cenling counties. This is not a guarantee of exhaustive nationwide coverage as of the review date.
-2. Support for towns in prefecture-level cities without districts (Dongguan, Zhongshan, Danzhou, Jiayuguan)
-3. Removed latitude/longitude data for smaller package size
-4. Kept historical names in a separate compatibility table; old addresses return their original names, without automatic conversion to current divisions
-5. Loaded division names into a private jieba tokenizer to recognize newly established divisions
-6. Added recognition status, explanations and current-name suggestions by default. Use ``include_status=False`` to preserve the original output columns. Historical names are retained rather than silently rewritten; farm/park names are labelled as places.
+.. list-table:: 识别状态
+    :header-rows: 1
+    :widths: 20 80
 
-7. Added 10 reviewed address aliases and historical guidance for Dachang and Meilie districts in 0.5.1; ambiguous default mappings disclose candidate cities.
-8. Fixed province-constrained city/district aliases, separated reverse-order addresses, Luqiao district road filtering, and province-abbreviation positions in 0.5.2.
+    * - 状态
+      - 含义
+    * - 现行名称
+      - 返回组合命中本项目现行快照，不证明原文真实有效，也不能替代实时官方校验。
+    * - 历史名称
+      - 已核验的旧行政名称；保留原名，有明确依据时提供现行名称建议。
+    * - 历史管理名称
+      - 旧管理区域称呼，不是现行县级行政区。
+    * - 地点名称
+      - 园区、农场等地址地点词，不是县区或镇街。
+    * - 待核验
+      - 来源存在疑点，或已识别层级互相矛盾；不会强行修改原文中的全名。
+    * - 存在歧义
+      - 内置默认映射仍有多个城市候选；可补充城市或传入有效 umap。
+    * - 未完整识别
+      - 缺少足够的省市区信息，不能判断是否现行。
 
-Output validation
------------------
+``地址`` 仅去掉连续行政名称前缀；正文前缀、空格或分隔符会中断截断。
+例如 ``江苏省南京市 鼓楼区人民路1号`` 的剩余地址为 `` 鼓楼区人民路1号``，区字段照常识别。
 
-By default, output combinations are checked against the bundled current and historical tables, loaded locally without a network request per address. Alias disambiguation also uses parent relationships. Conflicting explicit names are retained and marked ``待核验``; historical names keep their original spelling and status. A match only confirms membership in this snapshot, not the real-world validity of the input address.
+常用选项
+--------
 
-``include_status=False`` disables output status checking and its columns; parsing still applies parent constraints. Both parsing modes share these rules. Neither mode guarantees higher accuracy for every input.
+输入应为地址字符串集合，例如 list 或 pandas Series；单条地址也请使用列表。
 
-Full documentation: `https://github.com/laofahai/cpca-linch <https://github.com/laofahai/cpca-linch>`_
+.. code-block:: python
 
-License
--------
+    # 保持旧版四列输出，关闭输出状态校验和提示列；解析归属约束仍生效。
+    df = cpca.transform(addresses, include_status=False)
+
+    # 已知业务归属时指定重名区县映射；不能覆盖原文明确的省份约束。
+    df = cpca.transform(["鼓楼区软件大道89号"], umap={"鼓楼区": "南京市"})
+
+    # 全文扫描；默认使用独立 jieba 词典分词，两种模式共享归属规则。
+    df = cpca.transform(addresses, cut=False, lookahead=8)
+
+    # 位置从 0 开始，推断补全或未直接识别的层级为 -1。
+    df = cpca.transform(["黑龙江省西安人民路1号"], pos_sensitive=True)
+    # 省_pos=0，市_pos=-1，区_pos=4
+
+没有一种模式保证对所有文本更准确。全文模式的 lookahead 过小会漏掉长名称。
+``index`` 可指定输出索引；``open_warning=False`` 关闭无法补全城市时的日志警告，不关闭状态列。
+
+数据范围与兼容
+--------------
+
+现行数据共 3643 条，基于 `AreaCity-JsSpider-StatsGov <https://github.com/xiangyuecn/AreaCity-JsSpider-StatsGov>`_
+的 ``2025.251231.260403`` 版本，采集于 2026-04-03；官方补丁核验日期为 2026-09-08，
+补充和安县、和康县、岑岭县，包含重庆两江新区。上述日期不代表全国所有最新变更均已收录。
+
+东莞、中山、儋州、嘉峪关的镇街可放入区字段，该字段不统一代表县级行政区。
+兼容表包含 15 条历史、旧管理区和地点名称；显式别名表包含 10 条有来源的映射。
+国营蓝洋农场、松山湖等标为“地点名称”，不能当作现行行政区划。
+
+兼容表不是全国历史区划全集。南朗镇、民众镇可给出街道名称建议；重庆江北区、渝北区等涉及辖区调整，
+需结合镇街确认现行归属，不提供统一替换建议。本库不提供建筑物反查、全国历史区划换算、多地点抽取、经纬度或行政区划代码。
+
+更新记录
+--------
+
+.. list-table:: 近期版本
+    :header-rows: 1
+    :widths: 15 85
+
+    * - 版本
+      - 更新内容
+    * - 0.5.2
+      - 修复同名简称跨省误选、逆序地址分隔符、路桥区道路误判和省简称位置。
+    * - 0.5.1
+      - 修复省市冲突、道路干扰、重名推断及普通词误匹配；新增显式别名和大厂区、梅列区历史提示。
+    * - 0.5.0
+      - 更新区划快照与历史兼容表，新增状态列，修复隔离构建并增加 CI 安装验证。
+
+区划查询接口、逐项数据更新记录和维护方法见 `完整文档 <https://github.com/laofahai/cpca-linch#readme>`_。
+
+许可证
+------
 
 MIT
