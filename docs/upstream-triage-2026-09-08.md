@@ -1,5 +1,7 @@
 # 原项目 issues / PR 筛查
 
+更新：0.5.1 已落实首批解析修复，见 [2026-09-09 修复记录](parser-fixes-2026-09-09.md)。下文是 0.5.0 时的筛查快照，不能将其中旧的复现结果当作 0.5.1 的当前行为。
+
 检查日期：2026-09-08。对象：[DQinYuan/chinese_province_city_area_mapper](https://github.com/DQinYuan/chinese_province_city_area_mapper)。
 
 扫描 118 个 issue 索引（71 open、47 closed），重点读取高相关正文和评论，进行 53 条地址 × 两种模式的定向复现；没有逐个核验所有图片附件。扫描全部 15 个 PR（8 open、4 closed、3 merged），深入查看 #133、#124、#103 差异及 #99 文件范围。本轮仅分析上游，不替上游发评论、开 issue 或合并 PR。

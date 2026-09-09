@@ -214,7 +214,7 @@ def test_full_text_extract3(monkeypatch):
     assert pca.area_pos == 10    
 
 
-def test_full_text_extract4(monkeypatch):
+def test_full_text_extract_small_lookahead(monkeypatch):
     """测试较小的lookahead"""
     monkeypatch.setattr(cpca, 'province_map', {'江苏': '江苏省'})
     monkeypatch.setattr(cpca, 'city_map', _dict2addr_map({'淮安': '淮安市'}))
